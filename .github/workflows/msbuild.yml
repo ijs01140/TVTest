@@ -32,9 +32,13 @@ jobs:
     - name: Add MSBuild to PATH
       uses: microsoft/setup-msbuild@v1.1.3
 
-    - name: Restore NuGet packages
+    - name: Restore NuGet packages (LibISDB)
       working-directory: ${{env.GITHUB_WORKSPACE}}
-      run: nuget restore ${{env.SOLUTION_FILE_PATH}}
+      run: nuget restore ${{env.SOLUTION_FILE_PATH_LIBISDB}}
+
+    - name: Restore NuGet packages (TVTest)
+      working-directory: ${{env.GITHUB_WORKSPACE}}
+      run: nuget restore ${{env.SOLUTION_FILE_PATH_TVTEST}}
 
     - name: Build LibISDB
       working-directory: ${{env.GITHUB_WORKSPACE}}
