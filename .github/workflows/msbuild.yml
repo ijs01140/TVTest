@@ -19,6 +19,7 @@ jobs:
   build:
     runs-on: windows-latest
     strategy:
+      fail-fast: false
       matrix:
         build-platform: [x64, x86]
         crt-type: [dynamic, static]
