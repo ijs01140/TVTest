@@ -60,7 +60,7 @@ jobs:
 
     - name: Build LibISDB
       working-directory: ${{env.GITHUB_WORKSPACE}}
-      run: msbuild /m /p:Configuration=${{ matrix.build-configuration-tvtest }}  /p:platform=${{ matrix.build-platform-msbuild }} ${{env.SOLUTION_FILE_PATH_LIBISDB}}
+      run: msbuild /m /p:Configuration=${{ matrix.build-configuration-tvtest }}  /p:platform=${{ matrix.build-platform }} ${{env.SOLUTION_FILE_PATH_LIBISDB}}
 
     - name: Build TVTest
       working-directory: ${{env.GITHUB_WORKSPACE}}
