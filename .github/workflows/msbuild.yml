@@ -33,6 +33,9 @@ jobs:
             build-platform-msbuild: x64
           - build-platform: x86
             build-platform-msbuild: Win32
+        exclude:
+          - build-platform: x86
+            crt-type: dynamic
 
     steps:
     - uses: actions/checkout@v3
