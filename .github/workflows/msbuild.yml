@@ -82,5 +82,5 @@ jobs:
     - name: save artifacts
       uses: actions/upload-artifact@v3
       with:
-        name: TVTest ${{ matrix.crt-type }}
+        name: TVTest_${{ matrix.build-platform }}_${{ matrix.crt-type }} 
         path: ./package/*.7z
