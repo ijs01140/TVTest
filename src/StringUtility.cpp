@@ -75,30 +75,6 @@ bool StringIsDigit(LPCTSTR pszString)
 }
 
 
-[[nodiscard]] LPSTR DuplicateString(LPCSTR pszString)
-{
-	if (pszString == nullptr)
-		return nullptr;
-
-	const size_t Length = lstrlenA(pszString) + 1;
-	const LPSTR pszNewString = new char[Length];
-	std::memcpy(pszNewString, pszString, Length);
-	return pszNewString;
-}
-
-
-[[nodiscard]] LPWSTR DuplicateString(LPCWSTR pszString)
-{
-	if (pszString == nullptr)
-		return nullptr;
-
-	const size_t Length = lstrlenW(pszString) + 1;
-	const LPWSTR pszNewString = new WCHAR[Length];
-	std::memcpy(pszNewString, pszString, Length * sizeof(WCHAR));
-	return pszNewString;
-}
-
-
 static inline bool IsWhitespace(TCHAR c)
 {
 	return c == _T(' ') || c == _T('\r') || c == _T('\n') || c == _T('\t');
@@ -250,14 +226,37 @@ int CompareNoCase(const String &String1, LPCWSTR pszString2, String::size_type L
 
 bool Trim(String &Str, LPCWSTR pszSpaces)
 {
-	if (IsStringEmpty(pszSpaces))
+	if (Str.empty() || IsStringEmpty(pszSpaces))
 		return false;
 
 	const String::size_type First = Str.find_first_not_of(pszSpaces);
-	if (First == String::npos)
+	if (First == String::npos) {
+		Str.clear();
+	} else {
+		const String::size_type Last = Str.find_last_not_of(pszSpaces);
+		const String::size_type Length = Last - First + 1;
+		if (Length == Str.length())
+			return false;
+		Str = Str.substr(First, Length);
+	}
+
+	return true;
+}
+
+bool TrimEnd(String &Str, LPCWSTR pszSpaces)
+{
+	if (IsStringEmpty(pszSpaces))
 		return false;
 
-	Str = Str.substr(First, Str.find_last_not_of(pszSpaces) - First + 1);
+	String::size_type Length = Str.find_last_not_of(pszSpaces);
+	if (Length == String::npos)
+		Length = 0;
+	else
+		Length++;
+	if (Str.length() == Length)
+		return false;
+
+	Str.resize(Length);
 
 	return true;
 }

@@ -1147,7 +1147,7 @@ void CUICore::InitTunerMenu(HMENU hmenu)
 {
 	m_App.ChannelMenu.Destroy();
 
-	CPopupMenu Menu(hmenu);
+	CPopupMenu Menu(hmenu, false);
 	Menu.Clear();
 
 	const bool fIsTunerOpen = m_App.CoreEngine.IsTunerOpen();
@@ -1287,6 +1287,17 @@ bool CUICore::HandleInitMenuPopup(HMENU hmenu)
 void CUICore::SetPopupMenuDPI(int DPI)
 {
 	m_PopupMenuDPI = DPI;
+}
+
+
+bool CUICore::ShowEventInfoOSD(COSDManager::EventInfoOSDFlag Flags)
+{
+	LibISDB::EventInfo EventInfo;
+
+	if (!m_App.CoreEngine.GetCurrentEventInfo(&EventInfo, !!(Flags & COSDManager::EventInfoOSDFlag::Next)))
+		return false;
+
+	return m_App.OSDManager.ShowEventInfoOSD(EventInfo, Flags);
 }
 
 

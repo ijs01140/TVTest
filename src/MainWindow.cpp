@@ -302,7 +302,7 @@ bool CMainWindow::SetFullscreen(bool fFullscreen)
 			return false;
 	} else {
 		ForegroundWindow(m_hwnd);
-		m_Fullscreen.Destroy();
+		m_Fullscreen.SendMessage(WM_CLOSE, 0, 0);
 		LibISDB::ViewerFilter *pViewer = m_App.CoreEngine.GetFilter<LibISDB::ViewerFilter>();
 		if (pViewer != nullptr) {
 			pViewer->SetViewStretchMode(m_App.VideoOptions.GetStretchMode());
@@ -330,10 +330,10 @@ HWND CMainWindow::GetVideoHostWindow() const
 void CMainWindow::ShowNotificationBar(
 	LPCTSTR pszText, CNotificationBar::MessageType Type, DWORD Duration, bool fSkippable)
 {
-	m_NotificationBar.SetFont(m_App.OSDOptions.GetNotificationBarFont());
+	m_NotificationBar.SetFont(m_App.NotificationBarOptions.GetNotificationBarFont());
 	m_NotificationBar.Show(
 		pszText, Type,
-		std::max(static_cast<DWORD>(m_App.OSDOptions.GetNotificationBarDuration()), Duration),
+		std::max(static_cast<DWORD>(m_App.NotificationBarOptions.GetNotificationBarDuration()), Duration),
 		fSkippable);
 }
 
@@ -1097,6 +1097,8 @@ LRESULT CMainWindow::OnMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPara
 				return TRUE;
 			if (m_App.FavoritesMenu.OnMeasureItem(hwnd, wParam, lParam))
 				return TRUE;
+			if (m_App.RecentChannelList.OnMeasureItem(hwnd, wParam, lParam))
+				return TRUE;
 		}
 		break;
 
@@ -1106,6 +1108,8 @@ LRESULT CMainWindow::OnMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPara
 		if (m_App.ChannelMenu.OnDrawItem(hwnd, wParam, lParam))
 			return TRUE;
 		if (m_App.FavoritesMenu.OnDrawItem(hwnd, wParam, lParam))
+			return TRUE;
+		if (m_App.RecentChannelList.OnDrawItem(hwnd, wParam, lParam))
 			return TRUE;
 		break;
 
@@ -1194,12 +1198,16 @@ LRESULT CMainWindow::OnMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPara
 			return 0;
 		if (m_App.FavoritesMenu.OnUninitMenuPopup(hwnd, wParam, lParam))
 			return 0;
+		if (m_App.RecentChannelList.OnUninitMenuPopup(hwnd, wParam, lParam))
+			return 0;
 		break;
 
 	case WM_MENUSELECT:
 		if (m_App.ChannelMenu.OnMenuSelect(hwnd, wParam, lParam))
 			return 0;
 		if (m_App.FavoritesMenu.OnMenuSelect(hwnd, wParam, lParam))
+			return 0;
+		if (m_App.RecentChannelList.OnMenuSelect(hwnd, wParam, lParam))
 			return 0;
 		break;
 
@@ -1387,16 +1395,6 @@ LRESULT CMainWindow::OnMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPara
 		}
 		return 0;
 
-	/*
-	case WM_APP_IMAGESAVE:
-		{
-			::MessageBox(
-				nullptr, TEXT("画像の保存でエラーが発生しました。"), nullptr,
-				MB_OK | MB_ICONEXCLAMATION);
-		}
-		return 0;
-	*/
-
 	case WM_APP_TRAYICON:
 		switch (lParam) {
 		case WM_RBUTTONDOWN:
@@ -1491,17 +1489,14 @@ LRESULT CMainWindow::OnMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPara
 		// 通知バーの表示
 		TRACE(TEXT("WM_APP_SHOWNOTIFICATIONBAR"));
 		{
-			LPCTSTR pszMessage = reinterpret_cast<LPCTSTR>(lParam);
+			BlockLock Lock(m_NotificationLock);
 
-			if (pszMessage != nullptr) {
-				if (m_App.OSDOptions.IsNotifyEnabled(HIWORD(wParam))) {
-					ShowNotificationBar(
-						pszMessage,
-						static_cast<CNotificationBar::MessageType>(LOWORD(wParam)),
-						6000);
-				}
-				delete [] pszMessage;
+			for (const NotificationInfo &Info : m_PendingNotificationList) {
+				if (m_App.NotificationBarOptions.IsNotifyEnabled(Info.NotifyType))
+					ShowNotificationBar(Info.Text.c_str(), Info.MessageType, Info.Duration, Info.fSkippable);
 			}
+
+			m_PendingNotificationList.clear();
 		}
 		return 0;
 
@@ -2497,6 +2492,8 @@ bool CMainWindow::HandleCommand(CCommandManager::InvokeParameters &Params)
 		if (!m_App.HomeDisplay.GetVisible()) {
 			Util::CWaitCursor WaitCursor;
 
+			m_App.OSDManager.HideEventInfoOSD();
+
 			m_App.HomeDisplay.SetFont(
 				m_App.OSDOptions.GetDisplayFont(),
 				m_App.OSDOptions.IsDisplayFontAutoSize());
@@ -2520,6 +2517,8 @@ bool CMainWindow::HandleCommand(CCommandManager::InvokeParameters &Params)
 	case CM_CHANNELDISPLAY:
 		if (!m_App.ChannelDisplay.GetVisible()) {
 			Util::CWaitCursor WaitCursor;
+
+			m_App.OSDManager.HideEventInfoOSD();
 
 			m_App.ChannelDisplay.SetFont(
 				m_App.OSDOptions.GetDisplayFont(),
@@ -2886,7 +2885,7 @@ void CMainWindow::OnTimer(HWND hwnd, UINT id)
 
 	case TIMER_ID_OSD:
 		// OSD を消す
-		m_App.OSDManager.ClearOSD();
+		m_App.OSDManager.ClearCompositedOSD();
 		m_Timer.EndTimer(TIMER_ID_OSD);
 		break;
 
@@ -3063,7 +3062,7 @@ bool CMainWindow::OnInitMenuPopup(HMENU hmenu)
 			hmenu, CM_ADDTOFAVORITES,
 			MF_BYCOMMAND | (m_App.ChannelManager.GetCurrentChannelInfo() != nullptr ? MF_ENABLED : MF_GRAYED));
 	} else if (hmenu == m_App.MainMenu.GetSubMenu(CMainMenu::SUBMENU_CHANNELHISTORY)) {
-		m_App.RecentChannelList.SetMenu(hmenu);
+		m_App.RecentChannelList.SetMenu(m_hwnd, hmenu);
 	} else if (hmenu == m_App.MainMenu.GetSubMenu(CMainMenu::SUBMENU_ASPECTRATIO)) {
 		int ItemCount = ::GetMenuItemCount(hmenu);
 
@@ -3142,7 +3141,7 @@ bool CMainWindow::OnInitMenuPopup(HMENU hmenu)
 				m_pCore->GetPopupMenuDPI());
 		}
 	} else if (hmenu == m_App.MainMenu.GetSubMenu(CMainMenu::SUBMENU_AUDIO)) {
-		CPopupMenu Menu(hmenu);
+		CPopupMenu Menu(hmenu, false);
 		Menu.Clear();
 
 		const LibISDB::AnalyzerFilter *pAnalyzer = m_App.CoreEngine.GetFilter<LibISDB::AnalyzerFilter>();
@@ -3364,7 +3363,7 @@ bool CMainWindow::OnInitMenuPopup(HMENU hmenu)
 			CM_SPDIF_DISABLED + static_cast<int>(SPDIFOptions.Mode));
 		m_App.Accelerator.SetMenuAccel(hmenu);
 	} else if (hmenu == m_App.MainMenu.GetSubMenu(CMainMenu::SUBMENU_VIDEO)) {
-		CPopupMenu Menu(hmenu);
+		CPopupMenu Menu(hmenu, false);
 		Menu.Clear();
 
 		const LibISDB::AnalyzerFilter *pAnalyzer = m_App.CoreEngine.GetFilter<LibISDB::AnalyzerFilter>();
@@ -3655,8 +3654,19 @@ void CMainWindow::OnChannelChanged(AppEvent::ChannelChangeStatus Status)
 	m_App.StatusView.UpdateItem(STATUS_ITEM_TUNER);
 	m_App.Panel.ControlPanel.UpdateItem(CONTROLPANEL_ITEM_CHANNEL);
 	m_App.Panel.ControlPanel.UpdateItem(CONTROLPANEL_ITEM_TUNER);
+
 	if (pCurChannel != nullptr && m_App.OSDOptions.IsOSDEnabled(COSDOptions::OSDType::Channel))
 		ShowChannelOSD();
+
+	m_fNeedEventInfoOSD = false;
+	if (!m_App.OSDManager.IsEventInfoOSDVisible()
+			&& m_App.OSDOptions.GetEventInfoOSDAutoShowChannelChange()) {
+		if (!m_App.UICore.ShowEventInfoOSD(COSDManager::EventInfoOSDFlag::Auto)) {
+			// 番組情報が取得できるまで保留
+			m_fNeedEventInfoOSD = true;
+		}
+	}
+
 	const bool fEpgLoading = m_App.EpgOptions.IsEpgDataLoading();
 	m_App.Panel.EnableProgramListUpdate(!fEpgLoading);
 	m_Timer.BeginTimer(TIMER_ID_PROGRAMLISTUPDATE, 10000);
@@ -4041,7 +4051,7 @@ void CMainWindow::OnEventChanged()
 
 	m_pCore->UpdateTitle();
 
-	if (m_App.OSDOptions.IsNotifyEnabled(COSDOptions::NOTIFY_EVENTNAME)
+	if (m_App.NotificationBarOptions.IsNotifyEnabled(CNotificationBarOptions::NOTIFY_EVENTNAME)
 			&& !m_App.Core.IsChannelScanning()) {
 		LibISDB::EventInfo EventInfo;
 
@@ -4059,6 +4069,14 @@ void CMainWindow::OnEventChanged()
 			Text += EventInfo.EventName;
 			ShowNotificationBar(Text.c_str(), CNotificationBar::MessageType::Info, 0, true);
 		}
+	}
+
+	if (m_App.OSDManager.IsEventInfoOSDVisible()) {
+		m_App.UICore.ShowEventInfoOSD();
+	} else if (m_fNeedEventInfoOSD
+			|| m_App.OSDOptions.GetEventInfoOSDAutoShowEventChange()) {
+		m_App.UICore.ShowEventInfoOSD(COSDManager::EventInfoOSDFlag::Auto);
+		m_fNeedEventInfoOSD = false;
 	}
 
 	if (IsPanelVisible()
@@ -4698,6 +4716,34 @@ bool CMainWindow::ShowProgramGuide(bool fShow, ShowProgramGuideFlag Flags, const
 	m_App.Epg.fShowProgramGuide = fShow;
 
 	m_pCore->SetCommandCheckedState(CM_PROGRAMGUIDE, m_App.Epg.fShowProgramGuide);
+
+	return true;
+}
+
+
+bool CMainWindow::PostNotification(
+	LPCTSTR pszText,
+	unsigned int NotifyType,
+	CNotificationBar::MessageType MessageType,
+	bool fSkippable)
+{
+	if (IsStringEmpty(pszText))
+		return false;
+
+	BlockLock Lock(m_NotificationLock);
+
+	NotificationInfo &Info = m_PendingNotificationList.emplace_back();
+
+	Info.Text = pszText;
+	Info.NotifyType = NotifyType;
+	Info.MessageType = MessageType;
+	Info.Duration = 6000;
+	Info.fSkippable = fSkippable;
+
+	if (!PostMessage(WM_APP_SHOWNOTIFICATIONBAR, 0, 0)) {
+		m_PendingNotificationList.clear();
+		return false;
+	}
 
 	return true;
 }
@@ -5647,6 +5693,19 @@ LRESULT CMainWindow::CFullscreen::OnMessage(HWND hwnd, UINT uMsg, WPARAM wParam,
 			m_TitleBar.SetIcon(reinterpret_cast<HICON>(lParam));
 		break;
 
+	case WM_SHOWWINDOW:
+		if (wParam != 0) {
+			if (m_fShowEventInfoOSD) {
+				::PostMessage(hwnd, MESSAGE_SHOWEVENTINFOOSD, 0, 0);
+				m_fShowEventInfoOSD = false;
+			}
+		}
+		break;
+
+	case WM_CLOSE:
+		m_fShowEventInfoOSD = m_App.OSDManager.IsEventInfoOSDVisible();
+		break;
+
 	case WM_DESTROY:
 		m_pDisplay->GetVideoContainer().SetParent(&m_pDisplay->GetViewWindow());
 		m_pDisplay->GetViewWindow().SendSizeMessage();
@@ -5654,12 +5713,20 @@ LRESULT CMainWindow::CFullscreen::OnMessage(HWND hwnd, UINT uMsg, WPARAM wParam,
 		m_LayoutBase.SetTopContainer(nullptr);
 		ShowCursor(true);
 		m_pDisplay->GetDisplayBase().AdjustPosition();
-		m_TitleBar.Destroy();
+
 		m_App.OSDManager.Reset();
+		if (m_fShowEventInfoOSD)
+			m_App.UICore.ShowEventInfoOSD();
+
+		m_TitleBar.Destroy();
 		ShowStatusBar(false);
 		ShowSideBar(false);
 		ShowPanel(false);
 		RestorePanel(false);
+		return 0;
+
+	case MESSAGE_SHOWEVENTINFOOSD:
+		m_App.UICore.ShowEventInfoOSD();
 		return 0;
 	}
 
@@ -5794,6 +5861,7 @@ bool CMainWindow::CFullscreen::OnCreate()
 	m_TitleBar.SetMaximizeMode(m_MainWindow.GetMaximize());
 	m_TitleBar.SetFullscreenMode(true);
 
+	m_fShowEventInfoOSD = m_App.OSDManager.IsEventInfoOSDVisible();
 	m_App.OSDManager.Reset();
 
 	LibISDB::ViewerFilter *pViewer = m_App.CoreEngine.GetFilter<LibISDB::ViewerFilter>();
@@ -6734,6 +6802,7 @@ void CMainWindow::CVideoContainerEventHandler::OnSizeChanged(int Width, int Heig
 	}
 
 	m_pMainWindow->m_App.OSDManager.HideVolumeOSD();
+	m_pMainWindow->m_App.OSDManager.AdjustPosition();
 }
 
 

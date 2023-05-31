@@ -60,6 +60,7 @@ namespace TVTest
 			Format_EndEllipsis   = 0x00000040UL,
 			Format_WordEllipsis  = 0x00000080UL,
 			Format_TrimChar      = 0x00000100UL,
+			Format_ClipLastLine  = 0x00000200UL,
 			Draw_Antialias       = 0x00001000UL,
 			Draw_NoAntialias     = 0x00002000UL,
 			Draw_ClearType       = 0x00004000UL,
@@ -94,15 +95,20 @@ namespace TVTest
 			bool LoadFromResource(HINSTANCE hinst, LPCWSTR pszName);
 			bool LoadFromResource(HINSTANCE hinst, LPCTSTR pszName, LPCTSTR pszType);
 			bool Create(int Width, int Height, int BitsPerPixel);
+			// HBITMAP と HPALETTE は CImage を破棄するまで有効でなければならない
 			bool CreateFromBitmap(HBITMAP hbm, HPALETTE hpal = nullptr);
-			bool CreateFromDIB(const BITMAPINFO *pbmi, const void *pBits);
+			// pBits の画像データは CImage を破棄するまで有効でなければならない
+			bool CreateFromDIB(const BITMAPINFO *pbmi, void *pBits);
 			bool IsCreated() const;
 			int GetWidth() const;
 			int GetHeight() const;
 			void Clear();
+			HBITMAP CreateBitmap();
 
 		private:
 			std::unique_ptr<Gdiplus::Bitmap> m_Bitmap;
+
+			bool VerifyConstruct();
 
 			friend class CCanvas;
 		};
@@ -117,9 +123,12 @@ namespace TVTest
 			void Free();
 			bool CreateSolidBrush(BYTE r, BYTE g, BYTE b, BYTE a = 255);
 			bool CreateSolidBrush(const CColor &Color);
+			bool IsCreated() const;
 
 		private:
 			std::unique_ptr<Gdiplus::SolidBrush> m_Brush;
+
+			bool VerifyConstruct();
 
 			friend class CCanvas;
 		};
@@ -129,10 +138,15 @@ namespace TVTest
 		public:
 			CFont() = default;
 			CFont(const LOGFONT &lf);
+
 			void Free();
+			bool Create(const LOGFONT &lf);
+			bool IsCreated() const;
 
 		private:
 			std::unique_ptr<Gdiplus::Font> m_Font;
+
+			bool VerifyConstruct();
 
 			friend class CCanvas;
 		};
@@ -145,31 +159,36 @@ namespace TVTest
 
 			bool Clear(BYTE r, BYTE g, BYTE b, BYTE a = 255);
 			bool SetComposition(bool fComposite);
-			bool DrawImage(CImage *pImage, int x, int y);
+			bool DrawImage(const CImage *pImage, int x, int y);
 			bool DrawImage(
 				int DstX, int DstY, int DstWidth, int DstHeight,
-				CImage *pImage, int SrcX, int SrcY, int SrcWidth, int SrcHeight, float Opacity = 1.0f);
-			bool FillRect(CBrush *pBrush, const RECT &Rect);
+				const CImage *pImage, int SrcX, int SrcY, int SrcWidth, int SrcHeight, float Opacity = 1.0f);
+			bool FillRect(const CBrush *pBrush, const RECT &Rect);
 			bool FillGradient(
 				const CColor &Color1, const CColor &Color2,
 				const RECT &Rect, GradientDirection Direction);
 			bool DrawText(
-				LPCTSTR pszText, const LOGFONT &lf,
-				const RECT &Rect, CBrush *pBrush, TextFlag Flags);
+				LPCTSTR pszText, const CFont &Font,
+				const RECT &Rect, const CBrush *pBrush, TextFlag Flags);
 			bool GetTextSize(
-				LPCTSTR pszText, const LOGFONT &lf, TextFlag Flags, SIZE *pSize);
+				LPCTSTR pszText, const CFont &Font, TextFlag Flags, SIZE *pSize);
 			bool DrawOutlineText(
-				LPCTSTR pszText, const LOGFONT &lf,
-				const RECT &Rect, CBrush *pBrush,
+				LPCTSTR pszText, const CFont &Font,
+				const RECT &Rect, const CBrush *pBrush,
 				const CColor &OutlineColor, float OutlineWidth,
 				TextFlag Flags);
 			bool GetOutlineTextSize(
-				LPCTSTR pszText, const LOGFONT &lf,
+				LPCTSTR pszText, const CFont &Font,
 				float OutlineWidth, TextFlag Flags, SIZE *pSize);
+
+			float GetLineSpacing(const CFont &Font) const;
+			float GetFontAscent(const CFont &Font) const;
+			float GetFontDescent(const CFont &Font) const;
 
 		private:
 			std::unique_ptr<Gdiplus::Graphics> m_Graphics;
 
+			bool VerifyConstruct();
 			void SetStringFormat(Gdiplus::StringFormat *pFormat, TextFlag Flags);
 			void SetTextRenderingHint(TextFlag Flags);
 		};
