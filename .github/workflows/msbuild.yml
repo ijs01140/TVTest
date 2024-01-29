@@ -44,7 +44,7 @@ jobs:
         submodules: 'recursive'
 
     - name: Add MSBuild to PATH
-      uses: microsoft/setup-msbuild@v1.3.1
+      uses: microsoft/setup-msbuild@v1.3.2
 
     - name: Restore NuGet packages (LibISDB)
       working-directory: ${{env.GITHUB_WORKSPACE}}
