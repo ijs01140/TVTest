@@ -80,7 +80,7 @@ jobs:
         CRT_TYPE: ${{ matrix.crt-type }}
 
     - name: save artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: TVTest_${{ matrix.build-platform }}_${{ matrix.crt-type }} 
         path: ./package/*.7z
